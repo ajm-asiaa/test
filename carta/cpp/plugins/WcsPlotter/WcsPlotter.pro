@@ -47,7 +47,7 @@ else{
 }
 
 LIBS += $${astlibLIBS}
-LIBS += -L$$OUT_PWD/../../core/ -lcore
+#LIBS += -L$$OUT_PWD/../../core/ -lcore
 LIBS += -L$$OUT_PWD/../../CartaLib/ -lCartaLib
 
 INCLUDEPATH += $${CASACOREDIR}/include
