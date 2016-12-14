@@ -1,8 +1,7 @@
 general:
   branches:
     ignore:
-      - master
-      - develop
+      - gh-pages
 
 machine:
   services:
