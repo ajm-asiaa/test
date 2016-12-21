@@ -5,7 +5,7 @@ from cartaview import CartaView
 
 class Histogram(CartaView):
     """
-    Represents a histogram view.
+    Represents a histogram view. KSW.
     """
 
     def setClipBuffer(self, bufferAmount):
