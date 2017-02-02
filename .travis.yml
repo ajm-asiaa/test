@@ -2,6 +2,8 @@
    only:
       - develop
 
+language: generic
+
 compilter:
  - clang
  - gcc
