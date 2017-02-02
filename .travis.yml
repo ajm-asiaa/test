@@ -1,30 +1,30 @@
- branches:
-   only:
-      - develop
+branches:
+ only:
+   - develop
 
-language: generic
+sudo: required
 
-compilter:
+language: cpp
+
+compiler:
  - clang
  - gcc
 
-machine:
-  services:
-    - docker
+services:
+ - docker
 
-dependencies:
-  pre:
+before_install:
     - sudo pip install selenium
     - sudo pip install pytest
     - sudo pip install flaky
     - sudo pip install pytest-timeout
 
-  cache_directories:
+cache:
     # automatically cache build docker image between builds
     - "~/docker"
     - "~/images"
 
-  override:
+override:
     - docker info
     - mkdir -p ~/docker
     - mkdir -p ~/images
