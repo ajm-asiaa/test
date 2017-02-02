@@ -4,7 +4,7 @@ branches:
 
 sudo: required
 
-language: cpp
+language: generic
 
 #compiler:
 # - clang
@@ -27,7 +27,7 @@ cache:
 override:
     - docker info
     - mkdir -p ~/docker
-    - mkdir -p ~/images
+#    - mkdir -p ~/images
 
     # Restore docker build image and configure Dockerfile
     - if [[ -e ~/docker/image.tar ]]; then docker load -i ~/docker/image.tar; else  docker pull docker.io/grimmer0125/cartabuild:latest; docker save docker.io/grimmer0125/cartabuild:latest > ~/docker/image.tar; fi
