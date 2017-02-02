@@ -17,7 +17,7 @@ before_install:
     - sudo pip install selenium
     - sudo pip install pytest
     - sudo pip install flaky
-    - sudo pip install pytest-timeout
+#    - sudo pip install pytest-timeout
 
 cache:
     # automatically cache build docker image between builds
