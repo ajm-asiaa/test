@@ -30,7 +30,7 @@ install:
 #    - mkdir -p ~/images
 
     # Restore docker build image and configure Dockerfile
-    - if [[ -e ~/docker/image.tar ]]; then docker load -i ~/docker/image.tar; else  docker pull docker.io/grimmer0125/cartabuild:latest; docker save docker.io/grimmer0125/cartabuild:latest > ~/docker/image.tar; fi
+    - if [[ -e ~/docker/image.tar ]]; then docker load -i ~/docker/image.tar; else  docker pull docker.io/carta/cartabuild:base_20170105; docker save docker.io/carta/cartabuild:base_20170105 > ~/docker/image.tar; fi
 #    - cat ~/$CIRCLE_PROJECT_REPONAME/Dockerfile | envsubst  > ~/$CIRCLE_PROJECT_REPONAME/Dockerfile.new
 #    - mv ~/$CIRCLE_PROJECT_REPONAME/Dockerfile.new ~/$CIRCLE_PROJECT_REPONAME/Dockerfile
 
