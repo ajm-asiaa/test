@@ -24,7 +24,7 @@ cache:
     - "~/docker"
     - "~/images"
 
-install:
+script:
     - docker info
     - mkdir -p ~/docker
 #    - mkdir -p ~/images
