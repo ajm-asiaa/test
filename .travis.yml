@@ -1,9 +1,6 @@
  branches:
-   except:
-      - gh-pages
-      - master
+   only:
       - develop
-
 
 compilter:
  - clang
