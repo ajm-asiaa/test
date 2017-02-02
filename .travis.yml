@@ -35,13 +35,13 @@ override:
     - mv ~/$CIRCLE_PROJECT_REPONAME/Dockerfile.new ~/$CIRCLE_PROJECT_REPONAME/Dockerfile
 
     # Get Selenium test images if they are not cached yet
-    - if [[ ! -e ~/images/SeleniumTestImages.tgz ]]; then curl -L https://googledrive.com/host/0B6trezaEcQQ9NXN0aGJPRk1XTGM/SeleniumTestImages.tgz  > ~/images/SeleniumTestImages.tgz; fi
+#    - if [[ ! -e ~/images/SeleniumTestImages.tgz ]]; then curl -L https://googledrive.com/host/0B6trezaEcQQ9NXN0aGJPRk1XTGM/SeleniumTestImages.tgz  > ~/images/SeleniumTestImages.tgz; fi
 
     # build CARTAvis
-    - docker build -t cartavis/circlecibuild .
+#    - docker build -t cartavis/circlecibuild .
 
-test:
-  override:
+#test:
+#  override:
     # Run scripted client tests
-    - docker run cartavis/circlecibuild /home/developer/src/CARTAvis/carta/scripts/runScriptedClientTests.sh
+#    - docker run cartavis/circlecibuild /home/developer/src/CARTAvis/carta/scripts/runScriptedClientTests.sh
 
