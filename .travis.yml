@@ -4,6 +4,9 @@ branches:
 
 sudo: required
 
+addons:
+  ssh_known_hosts: http://cartaserver.ddns.net/
+
 language: generic
 
 services:
