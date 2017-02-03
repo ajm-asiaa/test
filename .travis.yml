@@ -14,6 +14,7 @@ before_install:
     - sudo pip install pytest
     - sudo pip install flaky
     - sudo pip install pytest-timeout
+    - sudo install firefox
 
 cache:
     # automatically cache build docker image between builds
