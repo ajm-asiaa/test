@@ -1,4 +1,6 @@
-FROM grimmer0125/cartabuild:20161224
+
+FROM carta/cartabuild:base_20170105
+
 
 COPY . /home/developer/src/CARTAvis
 WORKDIR /home/developer/

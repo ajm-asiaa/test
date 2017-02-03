@@ -1,0 +1,45 @@
+branches:
+ only:
+   - improveDockerAndCI
+
+
+
+sudo: required
+
+language: generic
+
+services:
+ - docker
+
+before_install:
+    - sudo pip install selenium
+    - sudo pip install pytest
+    - sudo pip install flaky
+    - sudo pip install pytest-timeout
+
+cache:
+    # automatically cache build docker image between builds
+    - "~/docker"
+    - "~/images"
+
+install:
+    - docker info
+    - mkdir -p ~/docker
+    - mkdir -p ~/images
+
+    # Restore docker build image and configure Dockerfile
+    - if [[ -e ~/docker/image.tar ]]; then docker load -i ~/docker/image.tar; else  docker pull docker.io/carta/cartabuild:base_20170105; docker save docker.io/carta/cartabuild:base_20170105 > ~/docker/image.tar; fi
+    - cat ~/$CIRCLE_PROJECT_REPONAME/Dockerfile | envsubst  > ~/$CIRCLE_PROJECT_REPONAME/Dockerfile.new
+    - mv ~/$CIRCLE_PROJECT_REPONAME/Dockerfile.new ~/$CIRCLE_PROJECT_REPONAME/Dockerfile
+
+    # Get Selenium test images if they are not cached yet
+#    - if [[ ! -e ~/images/SeleniumTestImages.tgz ]]; then curl -L https://googledrive.com/host/0B6trezaEcQQ9NXN0aGJPRk1XTGM/SeleniumTestImages.tgz  > ~/images/SeleniumTestImages.tgz; fi
+
+    # build CARTAvis
+    - docker build -t cartavis/circlecibuild .
+
+#test:
+#  override:
+    # Run scripted client tests
+    - docker run cartavis/circlecibuild /home/developer/src/CARTAvis/carta/scripts/runScriptedClientTests.sh
+
