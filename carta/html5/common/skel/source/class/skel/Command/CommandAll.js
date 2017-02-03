@@ -32,6 +32,8 @@ qx.Class.define("skel.Command.CommandAll", {
         this.m_cmds[6] = skel.Command.Clip.CommandClip.getInstance();
         this.m_cmds[7] = skel.Command.Data.CommandData.getInstance();
         var index = 8;
+        this.m_cmds[index] = skel.Command.Region.CommandRegions.getInstance();
+        index++;
         this.m_cmds[index] = skel.Command.Save.CommandSaveImage.getInstance();
         index++;
         this.m_cmds[index] = skel.Command.Data.CommandPanReset.getInstance();
@@ -49,6 +51,10 @@ qx.Class.define("skel.Command.CommandAll", {
         this.m_cmds[index] = skel.Command.Settings.SettingsColor.getInstance();
         index++;
         this.m_cmds[index] = skel.Command.Settings.SettingsStatistics.getInstance();
+        index++;
+        this.m_cmds[index] = skel.Command.Settings.SettingsContext.getInstance();
+        index++;
+        this.m_cmds[index] = skel.Command.Settings.SettingsZoom.getInstance();
         index++;
         this.m_cmds[index] = skel.Command.Popup.CommandPopup.getInstance();
         index++;

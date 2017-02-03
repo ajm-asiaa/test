@@ -18,6 +18,9 @@ public:
     CasaImageLoader(QObject *parent = 0);
     virtual bool handleHook(BaseHook & hookData) override;
     virtual std::vector<HookId> getInitialHookList() override;
+    virtual ~CasaImageLoader();
+
+
 
 //    void forgot_to_define_this();
 

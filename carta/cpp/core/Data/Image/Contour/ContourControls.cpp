@@ -193,19 +193,24 @@ QString ContourControls::_generatePercentile( const QString& contourSetName ){
         else {
             //First get the levels as percentiles.
             std::vector<double> percentileLevels = _getLevelsMinMax( maxLevel, result );
+
             //Map the percentiles to intensities
             if ( result.isEmpty() ){
                 int percentCount = percentileLevels.size();
-                std::vector<double> levels( percentCount );
-                bool validIntensities = false;
-                int intensityIndex = 0;
                 for ( int i = 0; i < percentCount; i++ ){
-                    validIntensities = m_percentIntensityMap->getIntensity( percentileLevels[i]/100, &levels[i], &intensityIndex );
-                    if ( !validIntensities ){
-                        break;
+                    percentileLevels[i] = percentileLevels[i] / 100;
+                }
+
+                std::vector<std::pair<int,double> > intensities = m_percentIntensityMap->getIntensity( percentileLevels );
+                std::vector<double> levels;
+                int intensityCount = intensities.size();
+
+                for ( int i = 0; i < intensityCount; i++ ){
+                    if ( intensities[i].first >= 0 ){
+                        levels.push_back( intensities[i].second );
                     }
                 }
-                if ( !validIntensities ){
+                if ( levels.size() == 0 ){
                    result = "Could not generate contour based on percentiles";
                 }
                 else {
@@ -476,9 +481,9 @@ void ContourControls::_initializeCallbacks(){
 
     addCommandCallback( "setStyle", [=] (const QString & /*cmd*/,
                     const QString & params, const QString & /*sessionId*/) -> QString {
-        std::set<QString> keys = { Contour::STYLE, CONTOUR_SET_NAME, LEVEL_LIST };
+        std::set<QString> keys = { Util::STYLE, CONTOUR_SET_NAME, LEVEL_LIST };
         std::map<QString,QString> dataValues = Carta::State::UtilState::parseParamMap( params, keys );
-        QString style = dataValues[Contour::STYLE];
+        QString style = dataValues[Util::STYLE];
         QString setName = dataValues[CONTOUR_SET_NAME];
         QString levelStr = dataValues[LEVEL_LIST];
         QString result;
@@ -566,11 +571,11 @@ void ContourControls::_initializeCallbacks(){
 
     addCommandCallback( "setThickness", [=] (const QString & /*cmd*/,
                                 const QString & params, const QString & /*sessionId*/) -> QString {
-            std::set<QString> keys = { Util::PEN_WIDTH, CONTOUR_SET_NAME, LEVEL_LIST };
+            std::set<QString> keys = { Util::WIDTH, CONTOUR_SET_NAME, LEVEL_LIST };
             std::map<QString,QString> dataValues = Carta::State::UtilState::parseParamMap( params, keys );
             bool validDouble = false;
             QString result;
-            double thickness = dataValues[Util::PEN_WIDTH].toDouble(&validDouble);
+            double thickness = dataValues[Util::WIDTH].toDouble(&validDouble);
             if ( validDouble ){
                 QString setName = dataValues[CONTOUR_SET_NAME ];
                 QString levelStr = dataValues[LEVEL_LIST];
@@ -584,7 +589,7 @@ void ContourControls::_initializeCallbacks(){
                 }
             }
             else {
-                result = "Contour thickness must be an integer: "+dataValues[Util::PEN_WIDTH];
+                result = "Contour thickness must be an integer: "+dataValues[Util::WIDTH];
             }
             Util::commandPostProcess( result );
             return result;

@@ -3,9 +3,9 @@
  */
 
 #pragma once
-
-#include "CartaLib/RegionInfo.h"
+#include <QString>
 #include <memory>
+#include <vector>
 
 namespace Carta {
 

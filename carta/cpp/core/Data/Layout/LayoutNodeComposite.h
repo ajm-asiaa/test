@@ -19,7 +19,14 @@ class LayoutNode;
 class LayoutNodeComposite : public LayoutNode {
 
 public:
-    virtual bool addWindow( const QString& nodeId, const QString& position ) Q_DECL_OVERRIDE;
+    /**
+     * Add an empty layout cell to the cell identified by nodeId at the position indicated.
+     * @param nodeId - an identifier for a layout cell that needs to be split.
+     * @param position - an identifier for where the cell should be added (top, bottom, etc).
+     * @param index - the index of the new empty window.
+     * @return true if the layout cell was added; false otherwise.
+     */
+    virtual bool addWindow( const QString& nodeId, const QString& position, int index ) Q_DECL_OVERRIDE;
 
     virtual bool containsNode( const QString& nodeId ) const Q_DECL_OVERRIDE;
     virtual LayoutNode* findAncestor( const QStringList& nodeId, QString& childId ) Q_DECL_OVERRIDE;
@@ -40,16 +47,17 @@ public:
     virtual void setChildSecond( LayoutNode* node ) Q_DECL_OVERRIDE;
     virtual bool setPlugin( const QString& nodeId, const QString& nodeType, int index ) Q_DECL_OVERRIDE;
     virtual bool setPlugins( QStringList& names, QMap<QString,int>& usedPlugins, bool useFirst ) Q_DECL_OVERRIDE;
-    virtual ~LayoutNodeComposite();
-    const static QString CLASS_NAME;;
-
+    virtual QString setSize( int width, int height );
     virtual QString toString() const  Q_DECL_OVERRIDE;
+    virtual ~LayoutNodeComposite();
+
+    const static QString CLASS_NAME;;
     const static QString PLUGIN_LEFT;
     const static QString PLUGIN_RIGHT;
 
 private:
     bool _addWindow( const QString& nodeId, const QString& position,
-            const QString& childKey, std::unique_ptr<LayoutNode>& child );
+            const QString& childKey, std::unique_ptr<LayoutNode>& child, int index );
     QStringList _checkChild( LayoutNode* child, const QStringList & nodeIds ) const;
     LayoutNode* _findAncestorChild( const QStringList& nodeIds, QString& childId,
             LayoutNode* child );
@@ -60,7 +68,7 @@ private:
             const Carta::State::StateInterface& newState, QMap<QString,int>& usedPlugins );
     void _setChild( const QString& key, std::unique_ptr<LayoutNode>& child, LayoutNode* node,
             bool destroy );
-    void _updateChildState( const QString& childKey, const QString& id, bool composite );
+    void _updateChildState( const QString& childKey,  LayoutNode* child );
 
     std::unique_ptr<LayoutNode> m_firstChild;
     std::unique_ptr<LayoutNode> m_secondChild;

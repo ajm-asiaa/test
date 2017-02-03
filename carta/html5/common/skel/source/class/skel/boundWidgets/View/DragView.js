@@ -46,6 +46,8 @@ qx.Class.define( "skel.boundWidgets.View.DragView", {
         this.m_sharedVarText = this.m_connector.getSharedVar( pathText );
         this.m_sharedVarText.addCB(this._cursorChangedCB.bind(this));
         this._cursorChangedCB();
+        var qualityValue = this.m_connector.supportsRasterViewQuality() ? 90 : 101;
+        this.setQuality( qualityValue );
     },
 
     members: {
@@ -57,9 +59,14 @@ qx.Class.define( "skel.boundWidgets.View.DragView", {
                     try {
                         var obj = JSON.parse( val );
                         if ( this.m_popupText !== null){
-                            this.m_popupText.setLabel( obj.cursorText );
-                            if ( obj.cursorText.length > 0 ){
-                                this.m_popup.show();
+                            if ( typeof obj.cursorText != 'undefined' ){
+                                this.m_popupText.setLabel( obj.cursorText );
+                                if ( obj.cursorText.length > 0 ){
+                                    this.m_popup.show();
+                                }
+                                else {
+                                    this.m_popup.hide();
+                                }
                             }
                             else {
                                 this.m_popup.hide();
@@ -80,6 +87,7 @@ qx.Class.define( "skel.boundWidgets.View.DragView", {
          */
         _mouseMoveCB : function (ev) {
             //if ( this.m_drag ){
+            if ( !ev.isCtrlPressed() ){
                 var box = this.overlayWidget().getContentLocation( "box" );
                 var pt = {
                         x: ev.getDocumentLeft() - box.left,
@@ -95,7 +103,7 @@ qx.Class.define( "skel.boundWidgets.View.DragView", {
                 };
                 
                 this.m_popup.placeToPoint(helpLocation);
-                
+            }
             //}
         },
         /**
@@ -104,18 +112,20 @@ qx.Class.define( "skel.boundWidgets.View.DragView", {
          */
         
         _mouseDownCB : function (ev) {
-            this.m_drag = true;
-            var box = this.overlayWidget().getContentLocation( "box" );
-            var x = ev.getDocumentLeft() - box.left;
-            var path = skel.widgets.Path.getInstance();
-            var cmd;
-            if ( !ev.isShiftPressed() ){
-                cmd = this.m_viewId + path.SEP_COMMAND + path.MOUSE_DOWN;
+            if ( !ev.isCtrlPressed() ){
+                this.m_drag = true;
+                var box = this.overlayWidget().getContentLocation( "box" );
+                var x = ev.getDocumentLeft() - box.left;
+                var path = skel.widgets.Path.getInstance();
+                var cmd;
+                if ( !ev.isShiftPressed() ){
+                    cmd = this.m_viewId + path.SEP_COMMAND + path.MOUSE_DOWN;
+                }
+                else {
+                    cmd = this.m_viewId + path.SEP_COMMAND + path.MOUSE_DOWN_SHIFT;
+                }
+                this.m_connector.sendCommand( cmd, "x:" + x );
             }
-            else {
-                cmd = this.m_viewId + path.SEP_COMMAND + path.MOUSE_DOWN_SHIFT;
-            }
-            this.m_connector.sendCommand( cmd, "x:" + x );
         },
         
         /**
@@ -123,19 +133,21 @@ qx.Class.define( "skel.boundWidgets.View.DragView", {
          * @param ev {qx.event.type.Mouse}.
          */
         _mouseUpCB : function(ev) {
-            if ( this.m_drag ){
-                this.m_drag = false;
-                var box = this.overlayWidget().getContentLocation( "box" );
-                var x = ev.getDocumentLeft() - box.left;
-                var path = skel.widgets.Path.getInstance();
-                var cmd;
-                if ( ! ev.isShiftPressed() ){
-                    cmd = this.m_viewId + path.SEP_COMMAND + path.MOUSE_UP;
+            if ( !ev.isCtrlPressed() ){
+                if ( this.m_drag ){
+                    this.m_drag = false;
+                    var box = this.overlayWidget().getContentLocation( "box" );
+                    var x = ev.getDocumentLeft() - box.left;
+                    var path = skel.widgets.Path.getInstance();
+                    var cmd;
+                    if ( ! ev.isShiftPressed() ){
+                        cmd = this.m_viewId + path.SEP_COMMAND + path.MOUSE_UP;
+                    }
+                    else {
+                        cmd = this.m_viewId + path.SEP_COMMAND + path.MOUSE_UP_SHIFT;
+                    }
+                    this.m_connector.sendCommand( cmd, "x:" + x );
                 }
-                else {
-                    cmd = this.m_viewId + path.SEP_COMMAND + path.MOUSE_UP_SHIFT;
-                }
-                this.m_connector.sendCommand( cmd, "x:" + x );
             }
         },
         

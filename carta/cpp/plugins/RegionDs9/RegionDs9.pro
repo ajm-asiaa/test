@@ -7,7 +7,8 @@ TARGET = plugin
 TEMPLATE = lib
 CONFIG += plugin
 
-FLEXSOURCES = ds9lex.L
+FLEXSOURCES = ds9lex.L 
+   
 BISONSOURCES = ds9parse.y
 
 SOURCES += \
@@ -17,12 +18,10 @@ SOURCES += \
 
 HEADERS += \
     RegionDs9.h \
-    FlexLexer.h \
-    ds9lex.h \
     ParserDs9.h \
-    ContextDs9.h
-    
-    
+    ContextDs9.h \
+    ds9FlexLexer.h \
+    ds9lex.h
     
 
 casacoreLIBS += -L$${CASACOREDIR}/lib
@@ -35,7 +34,12 @@ LIBS += -L$${WCSLIBDIR}/lib -lwcs
 LIBS += -L$${CFITSIODIR}/lib -lcfitsio
 LIBS += -L$$OUT_PWD/../../core/ -lcore
 LIBS += -L$$OUT_PWD/../../CartaLib/ -lCartaLib
-LIBS += -lfl -ly
+unix:macx{
+    LIBS += -L$${FLEXANDBISONDIR}/lib -lfl -ly
+    INCLUDEPATH += $${FLEXANDBISONDIR}/include
+} else {
+    LIBS += -lfl -ly
+}
 
 INCLUDEPATH += $${CASACOREDIR}/include
 INCLUDEPATH += $${CASACOREDIR}/include/casacore

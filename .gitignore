@@ -24,3 +24,7 @@
 *.swp
 
 *createlinks.sh
+build*/
+
+# license
+PureWeb*.lic

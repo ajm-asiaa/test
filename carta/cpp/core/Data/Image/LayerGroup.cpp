@@ -53,8 +53,8 @@ LayerGroup::LayerGroup(const QString& className, const QString& path, const QStr
     m_drawSync.reset( new DrawGroupSynchronizer( ) );
 
     // connect its done() slot to our renderingSlot()
-    connect( m_drawSync.get(), SIGNAL(done(QImage)),
-                            this, SLOT(_renderingDone(QImage)));
+    connect( m_drawSync.get(), SIGNAL(done(QImage,Carta::Lib::VectorGraphics::VGList)),
+                            this, SLOT(_renderingDone(QImage,Carta::Lib::VectorGraphics::VGList)));
 }
 
 void LayerGroup::_addContourSet( std::shared_ptr<DataContours> contourSet){
@@ -66,8 +66,7 @@ void LayerGroup::_addContourSet( std::shared_ptr<DataContours> contourSet){
     }
 }
 
-QString LayerGroup::_addData(const QString& fileName, bool* success, int* stackIndex,
-        QSize viewSize ) {
+QString LayerGroup::_addData(const QString& fileName, bool* success, int* stackIndex ) {
     QString result;
     Carta::State::ObjectManager* objMan = Carta::State::ObjectManager::objectManager();
     LayerData* targetSource = objMan->createObject<LayerData>();
@@ -80,7 +79,6 @@ QString LayerGroup::_addData(const QString& fileName, bool* success, int* stackI
     //If we are making a new layer, see if there is a selected group.  If so,
     //add to the group.  If not, add to this group.
     if ( *success ){
-        targetSource->_viewResize( viewSize );
         _setColorSupport( targetSource );
         std::shared_ptr<Layer> selectedGroup = _getSelectedGroup();
         if (selectedGroup ){
@@ -323,11 +321,13 @@ Carta::Lib::KnownSkyCS LayerGroup::_getCoordinateSystem() const {
     return cs;
 }
 
-QString LayerGroup::_getCursorText( int mouseX, int mouseY, const std::vector<int>& frames ){
+QString LayerGroup::_getCursorText( int mouseX, int mouseY,
+        const std::vector<int>& frames, const QSize& outputSize ){
     QString cursorText;
     int dataIndex = _getIndexCurrent();
     if ( dataIndex >= 0 ){
-        cursorText = m_children[dataIndex]->_getCursorText( mouseX, mouseY, frames );
+        cursorText = m_children[dataIndex]->_getCursorText( mouseX, mouseY,
+                frames, outputSize );
     }
     return cursorText;
 
@@ -395,6 +395,17 @@ std::shared_ptr<DataSource> LayerGroup::_getDataSource(){
 }
 
 
+
+QSize LayerGroup::_getDisplaySize() const {
+    QSize size;
+    int dataIndex = _getIndexCurrent();
+    if ( dataIndex >= 0 ){
+        size = m_children[dataIndex]->_getDisplaySize();
+    }
+    return size;
+}
+
+
 std::vector<int> LayerGroup::_getImageDimensions( ) const {
     std::vector<int> result;
     int dataIndex = _getIndexCurrent();
@@ -405,16 +416,28 @@ std::vector<int> LayerGroup::_getImageDimensions( ) const {
 }
 
 
-QPointF LayerGroup::_getImagePt( QPointF screenPt, bool* valid ) const {
+QPointF LayerGroup::_getImagePt( const QPointF& screenPt, const QSize& outputSize, bool* valid ) const {
     QPointF imagePt;
     int dataIndex = _getIndexCurrent();
     if ( dataIndex >= 0 ){
-        imagePt = m_children[dataIndex]->_getImagePt( screenPt, valid );
+        imagePt = m_children[dataIndex]->_getImagePt( screenPt, outputSize, valid );
     }
     else {
         *valid = false;
     }
     return imagePt;
+}
+
+QPointF LayerGroup::_getContextPt( const QPointF& screenPt, const QSize& outputSize, bool* valid ) const {
+	QPointF contextPt;
+	int dataIndex = _getIndexCurrent();
+	if ( dataIndex >= 0 ){
+		contextPt = m_children[dataIndex]->_getContextPt( screenPt, outputSize, valid );
+	}
+	else {
+		*valid = false;
+	}
+	return contextPt;
 }
 
 std::vector< std::shared_ptr<Carta::Lib::Image::ImageInterface> > LayerGroup::_getImages(){
@@ -449,30 +472,65 @@ int LayerGroup::_getIndexCurrent( ) const {
     return dataIndex;
 }
 
-bool LayerGroup::_getIntensity( int frameLow, int frameHigh, double percentile,
-        double* intensity, int* intensityIndex ) const {
-    bool intensityFound = false;
+QRectF LayerGroup::_getInputRect( const QSize& size ) const {
+    QRectF rect(0,0,0,0);
     int dataIndex = _getIndexCurrent();
     if ( dataIndex >= 0 ){
-        intensityFound = m_children[dataIndex]->_getIntensity( frameLow, frameHigh,
-                percentile, intensity, intensityIndex );
+        rect = m_children[dataIndex]->_getInputRect( size );
     }
-    return intensityFound;
+    return rect;
 }
 
-std::shared_ptr<Layer> LayerGroup::_getLayer(){
-    std::shared_ptr<Layer> layer(nullptr);
+std::vector<std::pair<int,double> > LayerGroup::_getIntensity( int frameLow, int frameHigh,
+        const std::vector<double>& percentiles ) const{
+    std::vector<std::pair<int,double> > results;
     int dataIndex = _getIndexCurrent();
     if ( dataIndex >= 0 ){
-        if ( !m_children[dataIndex]->_isComposite() ){
-            layer = m_children[dataIndex];
-        }
-        else {
-            layer = m_children[dataIndex]->_getLayer();
-        }
+        results = m_children[dataIndex]->_getIntensity( frameLow, frameHigh,
+                percentiles );
     }
+    return results;
+}
+
+std::shared_ptr<Layer> LayerGroup::_getLayer( const QString& name ){
+    std::shared_ptr<Layer> layer(nullptr);
+    int dataIndex = -1;
+    //Use the current layer
+    if ( name.isEmpty() || name.trimmed().length() == 0 ){
+    	dataIndex = _getIndexCurrent();
+    }
+    else {
+    	//See if one of the children has a matching id.
+    	int childCount = m_children.size();
+    	for ( int i = 0; i < childCount; i++ ){
+    		if ( !m_children[i]->_isComposite() ){
+    			if ( m_children[i]->_getLayerName() == name ){
+    				dataIndex = i;
+    				break;
+    			}
+    		}
+    	}
+    }
+    if ( dataIndex >= 0 ){
+    	layer = m_children[dataIndex];
+    }
+    //See if any of the composite children have matching layers
+    else {
+    	int childCount = m_children.size();
+    	for ( int i = 0; i < childCount; i++ ){
+    		if ( m_children[i]->_isComposite() ){
+    			layer = m_children[i]->_getLayer( name );
+    			if ( layer ){
+    				break;
+    			}
+    		}
+        }
+
+    }
+
     return layer;
 }
+
 
 std::vector<std::shared_ptr<Layer> > LayerGroup::_getLayers(){
     std::vector<std::shared_ptr<Layer> > layers;
@@ -501,15 +559,6 @@ QStringList LayerGroup::_getLayerIds( ) const {
 }
 
 
-QSize LayerGroup::_getOutputSize() const {
-    QSize size;
-    int dataIndex = _getIndexCurrent();
-    if ( dataIndex >= 0 ){
-        size = m_children[dataIndex]-> _getOutputSize();
-    }
-    return size;
-}
-
 double LayerGroup::_getPercentile( int frameLow, int frameHigh, double intensity ) const {
     double percentile = 0;
     int dataIndex = _getIndexCurrent();
@@ -521,14 +570,16 @@ double LayerGroup::_getPercentile( int frameLow, int frameHigh, double intensity
 
 
 
-QStringList LayerGroup::_getPixelCoordinates( double ra, double dec ) const{
-    QStringList result("");
+QPointF LayerGroup::_getPixelCoordinates( double ra, double dec, bool* valid ) const{
+    QPointF result;
     int dataIndex = _getIndexCurrent();
+    *valid = false;
     if ( dataIndex >= 0 ){
-        result = m_children[dataIndex]->_getPixelCoordinates( ra, dec );
+        result = m_children[dataIndex]->_getPixelCoordinates( ra, dec, valid );
     }
     return result;
 }
+
 
 QString LayerGroup::_getPixelUnits() const {
     QString units;
@@ -540,7 +591,7 @@ QString LayerGroup::_getPixelUnits() const {
 }
 
 QString LayerGroup::_getPixelValue( double x, double y, const std::vector<int>& frames ) const {
-    QString pixelValue = "";
+    QString pixelValue("");
     int dataIndex = _getIndexCurrent();
     if ( dataIndex >= 0 ){
         pixelValue = m_children[dataIndex]->_getPixelValue( x, y, frames );
@@ -548,6 +599,14 @@ QString LayerGroup::_getPixelValue( double x, double y, const std::vector<int>& 
     return pixelValue;
 }
 
+Carta::Lib::VectorGraphics::VGList LayerGroup::_getRegionGraphics() const {
+	Carta::Lib::VectorGraphics::VGList vgList;
+	int dataIndex = _getIndexCurrent();
+	if ( dataIndex >= 0 ){
+		vgList = m_children[dataIndex]->_getRegionGraphics();
+	}
+	return vgList;
+}
 
 QSize LayerGroup::_getSaveSize( const QSize& outputSize,  Qt::AspectRatioMode aspectMode) const {
     QSize saveSize = outputSize;
@@ -558,17 +617,13 @@ QSize LayerGroup::_getSaveSize( const QSize& outputSize,  Qt::AspectRatioMode as
     return saveSize;
 }
 
-
-QPointF LayerGroup::_getScreenPt( QPointF imagePt, bool* valid ) const {
-    QPointF screenPt;
-    int dataIndex = _getIndexCurrent();
-    if ( dataIndex >= 0 ){
-        screenPt = m_children[dataIndex]->_getScreenPt( imagePt, valid );
-    }
-    else {
-        *valid = false;
-    }
-    return screenPt;
+std::pair<double,QString> LayerGroup::_getRestFrequency() const {
+	std::pair<double,QString> restFreq( -1, "");
+	int dataIndex = _getIndexCurrent();
+	if ( dataIndex >= 0 ){
+		restFreq = m_children[dataIndex]->_getRestFrequency();
+	}
+	return restFreq;
 }
 
 std::shared_ptr<Layer> LayerGroup::_getSelectedGroup() {
@@ -624,6 +679,17 @@ QString LayerGroup::_getStateString( bool truncatePaths ) const{
 }
 
 
+QPointF LayerGroup::_getWorldCoordinates( double pixelX, double pixelY,
+        Carta::Lib::KnownSkyCS coordSys, bool* valid ) const{
+    QPointF result;
+    int dataIndex = _getIndexCurrent();
+    *valid = false;
+    if ( dataIndex >= 0 ){
+        result = m_children[dataIndex]->_getWorldCoordinates( pixelX, pixelY, coordSys, valid );
+    }
+    return result;
+}
+
 double LayerGroup::_getZoom() const {
     double zoom = DataSource::ZOOM_DEFAULT;
     int dataIndex = _getIndexCurrent();
@@ -648,7 +714,7 @@ void LayerGroup::_initializeState(){
     QString defaultCompMode = m_compositionModes->getDefault();
     m_state.insertValue<QString>( COMPOSITION_MODE, defaultCompMode );
     m_state.insertArray( LayerGroup::LAYERS, 0 );
-    m_state.setValue<QString>( LAYER_NAME, Layer::GROUP+_getLayerId());
+    m_state.setValue<QString>( Util::NAME, Layer::GROUP+_getLayerId());
 }
 
 bool LayerGroup::_isComposite() const {
@@ -681,14 +747,36 @@ bool LayerGroup::_isEmpty() const {
     return empty;
 }
 
-
-void LayerGroup::_load(std::vector<int> frames, bool recomputeClipsOnNewFrame,
-        double minClipPercentile, double maxClipPercentile ){
-    int childCount = m_children.size();
-    for ( int i = 0; i < childCount; i++ ){
-        m_children[i]->_load( frames, recomputeClipsOnNewFrame, minClipPercentile, maxClipPercentile );
-    }
+bool LayerGroup::_isLoadable( const std::vector<int>& frames ) const {
+	//A group is loadable if there is one loadable image in the group.
+	bool loadable = false;
+	int childCount = m_children.size();
+	for ( int i = 0; i < childCount; i++ ){
+		if ( m_children[i]->_isLoadable( frames ) ){
+			loadable = true;
+			break;
+		}
+	}
+	return loadable;
 }
+
+bool LayerGroup::_isSpectralAxis() const {
+	bool spectralAxis = false;
+
+	//All children must have a spectral axis if the group is to have one.
+	int childCount = m_children.size();
+	if ( childCount > 0 ){
+		spectralAxis = true;
+		for ( int i = 0; i < childCount; i++ ){
+			spectralAxis = m_children[i]->_isSpectralAxis();
+			if ( !spectralAxis ){
+				break;
+			}
+		}
+	}
+	return spectralAxis;
+}
+
 
 void LayerGroup::_removeData( int index ){
     int childCount = m_children.size();
@@ -740,7 +828,16 @@ void LayerGroup::_renderStart( ){
     if ( m_renderRequests.size() > 0 ){
         m_renderQueued = true;
         std::shared_ptr<RenderRequest> request = m_renderRequests.pop();
-        m_drawSync->setLayers( m_children );
+        //Only load the layers which have the required frames.
+        std::vector<int> frames = request->getFrames();
+        QList<std::shared_ptr<Layer> > loadables;
+        int childCount = m_children.size();
+        for ( int i = 0; i < childCount; i++ ){
+        	if ( m_children[i]->_isLoadable( frames ) ){
+        		loadables.append( m_children[i] );
+        	}
+        }
+        m_drawSync->setLayers( loadables );
         m_drawSync->setCombineMode( _getCompositionMode() );
         int topIndex = -1;
         if ( request->isStackTop()){
@@ -752,8 +849,7 @@ void LayerGroup::_renderStart( ){
 }
 
 
-void LayerGroup ::_renderingDone( QImage image ){
-    Carta::Lib::VectorGraphics::VGList graphics;
+void LayerGroup ::_renderingDone( QImage image, Carta::Lib::VectorGraphics::VGList graphics ){
     std::shared_ptr<RenderResponse> response( new RenderResponse(image, graphics, _getLayerId()));
     emit renderingDone( response );
 }
@@ -850,14 +946,14 @@ bool LayerGroup::_setCompositionMode( const QString& id, const QString& composit
 }
 
 
-bool LayerGroup::_setLayersGrouped( bool grouped  ){
+bool LayerGroup::_setLayersGrouped( bool grouped, const QSize& clientSize  ){
     bool operationPerformed = false;
     int dataCount = m_children.size();
     if ( !grouped ){
         //First see if any of the children can do the operation.
         //For now, it only makes sense to allow groups one deep.
         for ( int i = 0; i < dataCount; i++ ){
-            bool childPerformed = m_children[i]->_setLayersGrouped( grouped );
+            bool childPerformed = m_children[i]->_setLayersGrouped( grouped, clientSize );
             if ( childPerformed ){
                 operationPerformed = true;
                 break;
@@ -895,6 +991,7 @@ bool LayerGroup::_setLayersGrouped( bool grouped  ){
                             this, SLOT( _removeLayer( Layer*)));
                 QStringList selections;
                 selections.append( groupLayer->_getLayerId());
+                groupLayer->_setViewSize( clientSize );
                 groupLayer->_setSelected( selections );
                 operationPerformed = true;
             }
@@ -957,6 +1054,13 @@ void LayerGroup::_setPan( double imgX, double imgY ){
     }
 }
 
+void LayerGroup::_setRegionGraphics( const Carta::Lib::VectorGraphics::VGList& regionVGList){
+	//Only the top layer needs them, but we store in all layers.
+	for( std::shared_ptr<Layer> layer : m_children ){
+		layer->_setRegionGraphics( regionVGList );
+	}
+}
+
 bool LayerGroup::_setSelected( QStringList& names){
     bool stateChanged = Layer::_setSelected( names );
     for ( std::shared_ptr<Layer> layer : m_children ){
@@ -999,6 +1103,11 @@ void LayerGroup::_setMaskAlphaDefault(){
     }
 }
 
+void LayerGroup::_setViewSize( const QSize& size ){
+	if ( m_drawSync ){
+		m_drawSync->viewResize( size );
+	}
+}
 
 bool LayerGroup::_setVisible( const QString& id, bool visible ){
     bool layerFound = Layer::_setVisible( id, visible );
@@ -1026,19 +1135,6 @@ void LayerGroup::_updateClips( std::shared_ptr<Carta::Lib::NdArray::RawViewInter
         double minClipPercentile, double maxClipPercentile, const std::vector<int>& frames ){
     for ( std::shared_ptr<Layer> node : m_children ){
         node->_updateClips( view,  minClipPercentile, maxClipPercentile, frames );
-    }
-}
-
-void LayerGroup::_viewReset(){
-    for ( std::shared_ptr<Layer> node : m_children){
-        node->_viewReset();
-    }
-}
-
-void LayerGroup::_viewResize( const QSize& newSize ){
-    m_drawSync->viewResize( newSize );
-    for ( std::shared_ptr<Layer> node : m_children){
-        node->_viewResize( newSize );
     }
 }
 

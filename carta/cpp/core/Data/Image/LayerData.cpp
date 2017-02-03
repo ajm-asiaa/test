@@ -30,6 +30,8 @@ const QString LayerData::MASK = "mask";
 const QString LayerData::LAYER_COLOR="colorSupport";
 const QString LayerData::LAYER_ALPHA="alphaSupport";
 
+const QString LayerData::PAN = "pan";
+
 
 class LayerData::Factory : public Carta::State::CartaObjectFactory {
 
@@ -155,10 +157,11 @@ std::vector<AxisInfo::KnownType> LayerData::_getAxisTypes() const {
 
 
 QPointF LayerData::_getCenterPixel() const {
-    QPointF center = QPointF( nan(""), nan("") );
-    if ( m_dataSource ){
-        center = m_dataSource->_getCenter();
-    }
+    QPointF center;
+    QString centerXKey = Carta::State::UtilState::getLookup( PAN, Util::XCOORD );
+    QString centerYKey = Carta::State::UtilState::getLookup( PAN, Util::YCOORD );
+    center.setX( m_state.getValue<double>( centerXKey) );
+    center.setY( m_state.getValue<double>( centerYKey) );
     return center;
 }
 
@@ -208,11 +211,14 @@ Carta::Lib::KnownSkyCS LayerData::_getCoordinateSystem() const {
     return cs;
 }
 
-QString LayerData::_getCursorText( int mouseX, int mouseY, const std::vector<int>& frames ){
+QString LayerData::_getCursorText( int mouseX, int mouseY, const std::vector<int>& frames,
+        const QSize& outputSize ){
     QString cursorText;
     if ( m_dataSource ){
         Carta::Lib::KnownSkyCS cs = m_dataGrid->_getSkyCS();
-        cursorText = m_dataSource->_getCursorText( mouseX, mouseY, cs, frames );
+        QPointF pan = _getPan();
+        double zoom = _getZoom();
+        cursorText = m_dataSource->_getCursorText( mouseX, mouseY, cs, frames, zoom, pan, outputSize );
     }
     return cursorText;
 }
@@ -238,6 +244,17 @@ int LayerData::_getDimension() const {
     }
     return imageSize;
 }
+
+
+
+QSize LayerData::_getDisplaySize() const {
+    Carta::Lib::AxisInfo::KnownType xType = _getAxisXType();
+    Carta::Lib::AxisInfo::KnownType yType = _getAxisYType();
+    int frameCountX = _getFrameCount( xType );
+    int frameCountY = _getFrameCount( yType );
+    return QSize( frameCountX, frameCountY );
+}
+
 
 std::vector<int> LayerData::_getImageDimensions( ) const {
     std::vector<int> result;
@@ -272,11 +289,26 @@ std::shared_ptr<Carta::Lib::Image::ImageInterface> LayerData::_getImage(){
     return image;
 }
 
+QPointF LayerData::_getContextPt( const QPointF& screenPt, const QSize& outputSize, bool* valid ) const {
+	QPointF contextPt;
+	if ( m_dataSource ){
+		double zoom = 1;
+		QPointF imageCenter = m_dataSource->_getCenter();
+		contextPt = m_dataSource->_getImagePt( screenPt, zoom, imageCenter, outputSize, valid );
+	}
+	else {
+		*valid = false;
+	}
+	return contextPt;
+}
 
-QPointF LayerData::_getImagePt( QPointF screenPt, bool* valid ) const {
+QPointF LayerData::_getImagePt( const QPointF& screenPt, const QSize& outputSize,  bool* valid ) const {
     QPointF imagePt;
     if ( m_dataSource ){
-        imagePt = m_dataSource->_getImagePt( screenPt, valid );
+        double zoom = m_state.getValue<double>( Util::ZOOM );
+
+        QPointF pan = _getPan();
+        imagePt = m_dataSource->_getImagePt( screenPt, zoom, pan, outputSize, valid );
     }
     else {
         *valid = false;
@@ -285,14 +317,57 @@ QPointF LayerData::_getImagePt( QPointF screenPt, bool* valid ) const {
 }
 
 
-bool LayerData::_getIntensity( int frameLow, int frameHigh, double percentile,
-        double* intensity, int* intensityIndex ) const {
-    bool intensityFound = false;
+QRectF LayerData::_getInputRect( const QSize& outputSize ) const {
+    QPointF pan = _getPan();
+    double zoom = _getZoom();
+    return _getInputRectangle( pan, zoom, outputSize);
+}
+
+QRectF LayerData::_getInputRectangle( const QPointF& pan, double zoom, const QSize& outputSize ) const {
+    QRectF outputRect = _getOutputRectangle( outputSize, false, false );
+
+    //Bottom and top point of image in output pixels.
+    std::shared_ptr<Carta::Core::ImageRenderService::Service> imageService = m_dataSource->_getRenderer();
+    QPointF tl =imageService->image2screen( QPointF(0,0), pan, zoom, outputSize );
+    QSize imageSize = _getDisplaySize();
+    QPointF br = imageService->image2screen( QPointF(imageSize.width(),imageSize.height()), pan, zoom, outputSize );
+    QRectF imageRect( tl, br );
+
+    //Where image is in pixels
+    QRectF inputRect = outputRect.intersected( imageRect );
+
+    //Translate back to image points.
+    QPointF tlImage = imageService->screen2image( inputRect.topLeft(), pan, zoom, outputSize );
+    QPointF brImage = imageService->screen2image( inputRect.bottomRight(), pan, zoom, outputSize );
+
+    //Translate back to pixels with no zoom and pan, preserving image size.
+    QPointF center( imageSize.width()/2, imageSize.height()/2 );
+    QPointF tlPixel = imageService->image2screen( tlImage, center, 1, imageSize );
+    QPointF brPixel = imageService->image2screen( brImage, center, 1, imageSize );
+    QRectF visibleRect( tlPixel, brPixel );
+    return visibleRect;
+}
+
+QRectF LayerData::_getInputRectangle( const QPointF& pan, double zoom, const QRectF& outputRect,
+        const QSize& outputSize ) const {
+    QPointF topLeft = outputRect.topLeft();
+    QPointF bottomRight = outputRect.bottomRight();
+    std::shared_ptr<Carta::Core::ImageRenderService::Service> imageService =
+            m_dataSource->_getRenderer();
+    QPointF topLeftInput = imageService-> screen2image( topLeft, pan, zoom, outputSize );
+    QPointF bottomRightInput = imageService->screen2image( bottomRight, pan, zoom, outputSize );
+    //QSize size( qAbs( topLeftInput.x() - bottomRightInput.x()), qAbs( topLeftInput.y() - bottomRightInput.y()));
+    QRectF inputRect( topLeftInput, bottomRightInput );
+    return inputRect;
+}
+
+std::vector<std::pair<int,double> > LayerData::_getIntensity( int frameLow, int frameHigh,
+        const std::vector<double>& percentiles ) const{
+    std::vector<std::pair<int,double> > intensities;
     if ( m_dataSource ){
-        intensityFound = m_dataSource->_getIntensity( frameLow, frameHigh, percentile,
-                intensity, intensityIndex );
+        intensities = m_dataSource->_getIntensity( frameLow, frameHigh, percentiles );
     }
-    return intensityFound;
+    return intensities;
 }
 
 
@@ -314,13 +389,47 @@ quint32 LayerData::_getMaskColor() const {
     return rgbCol;
 }
 
-QSize LayerData::_getOutputSize() const {
-    QSize size;
-    if ( m_dataSource ){
-        size = m_dataSource-> _getOutputSize();
+QRectF LayerData::_getOutputRectangle( const QSize& outputSize, bool requestMain,
+        bool requestContext) const {
+    int leftMargin = 0;
+    int rightMargin = 0;
+    int topMargin = 0;
+    int bottomMargin = 0;
+    //Off center image to make room for grid axis and labels on two sides.
+    if ( requestMain ){
+        leftMargin = m_dataGrid->_getMargin( LabelFormats::EAST );
+        rightMargin = m_dataGrid->_getMargin( LabelFormats::WEST );
+        topMargin = m_dataGrid->_getMargin( LabelFormats::NORTH );
+        bottomMargin = m_dataGrid->_getMargin( LabelFormats::SOUTH );
     }
-    return size;
+    //Center the image
+    else if ( requestContext ){
+        QSize imageSize = _getDisplaySize();
+        int extraX = (outputSize.width() - imageSize.width())/2;
+        int extraY = (outputSize.height() - imageSize.height())/2;
+        if ( extraX > 0 ){
+            leftMargin = extraX;
+            bottomMargin = outputSize.width() - imageSize.width() - extraX;
+        }
+        if ( extraY > 0 ){
+            topMargin = extraY;
+            bottomMargin = outputSize.height() - imageSize.height() - extraY;
+        }
+    }
+    int outWidth = outputSize.width() - leftMargin - rightMargin;
+    int outHeight = outputSize.height() - topMargin - bottomMargin;
+    QRectF outputRect( leftMargin, topMargin, outWidth, outHeight );
+    return outputRect;
 }
+
+QPointF LayerData::_getPan() const {
+    QString panXKey = Carta::State::UtilState::getLookup( PAN, Util::XCOORD );
+    QString panYKey = Carta::State::UtilState::getLookup( PAN, Util::YCOORD );
+    double panX = m_state.getValue<double>( panXKey );
+    double panY = m_state.getValue<double>( panYKey );
+    return QPointF( panX, panY );
+}
+
 
 double LayerData::_getPercentile( int frameLow, int frameHigh, double intensity ) const {
     double percentile = 0;
@@ -331,11 +440,21 @@ double LayerData::_getPercentile( int frameLow, int frameHigh, double intensity 
 }
 
 
-
-QStringList LayerData::_getPixelCoordinates( double ra, double dec ) const{
-    QStringList result("");
+QPointF LayerData::_getPixelCoordinates( double ra, double dec, bool* valid ) const{
+    QPointF result;
+    *valid = false;
     if ( m_dataSource ){
-        result = m_dataSource->_getPixelCoordinates( ra, dec );
+        result = m_dataSource->_getPixelCoordinates( ra, dec, valid );
+    }
+    return result;
+}
+
+QPointF LayerData::_getWorldCoordinates( double pixelX, double pixelY,
+        Carta::Lib::KnownSkyCS coordSys, bool* valid ) const{
+    QPointF result;
+    *valid = false;
+    if ( m_dataSource ){
+        result = m_dataSource->_getWorldCoordinates( pixelX, pixelY, coordSys, valid );
     }
     return result;
 }
@@ -349,11 +468,23 @@ QString LayerData::_getPixelUnits() const {
 }
 
 QString LayerData::_getPixelValue( double x, double y, const std::vector<int>& frames ) const {
-    QString pixelValue = "";
+    QString pixelValue( "" );
     if ( m_dataSource ){
         pixelValue = m_dataSource->_getPixelValue( x, y, frames );
     }
     return pixelValue;
+}
+
+Carta::Lib::VectorGraphics::VGList LayerData::_getRegionGraphics() const {
+	return m_regionGraphics;
+}
+
+std::pair<double,QString> LayerData::_getRestFrequency() const {
+	std::pair<double,QString> restFreq(-1,"");
+	if ( m_dataSource ){
+		restFreq = m_dataSource->_getRestFrequency();
+	}
+	return restFreq;
 }
 
 QSize LayerData::_getSaveSize( const QSize& outputSize,  Qt::AspectRatioMode aspectMode) const {
@@ -408,16 +539,6 @@ QSize LayerData::_getSaveSize( const QSize& outputSize,  Qt::AspectRatioMode asp
     return saveSize;
 }
 
-QPointF LayerData::_getScreenPt( QPointF imagePt, bool* valid ) const {
-    QPointF screenPt;
-    if ( m_dataSource ){
-        screenPt = m_dataSource->_getScreenPt( imagePt, valid );
-    }
-    else {
-        *valid = false;
-    }
-    return screenPt;
-}
 
 QString LayerData::_getStateString( bool truncatePaths ) const{
     Carta::State::StateInterface copyState( m_state );
@@ -443,11 +564,34 @@ QString LayerData::_getStateString( bool truncatePaths ) const{
     return stateStr;
 }
 
+bool LayerData::_getTransform( const QPointF& pan, double zoom, const QSize& size,
+		QTransform& tf ) const {
+	bool valid = false;
+	//where does 0.5, 0.5 map to?
+	bool valid1 = false;
+	QPointF p1 = m_dataSource->_getScreenPt( { 0.5, 0.5 }, pan, zoom, size,  &valid1 );
+	// where does 1.5, 1.5 map to?
+	bool valid2 = false;
+	QPointF p2 = m_dataSource->_getScreenPt( { 1.5, 1.5 }, pan, zoom, size, &valid2 );
+	if ( valid1 && valid2 ){
+		valid = true;
+		double m11 = p2.x() - p1.x();
+		double m22 = p2.y() - p1.y();
+		double m33 = 1; // no projection
+		double m13 = 0; // no projection
+		double m23 = 0; // no projection
+		double m12 = 0; // no shearing
+		double m21 = 0; // no shearing
+		double m31 = p1.x() - m11 * 0.5;
+		double m32 = p1.y() - m22 * 0.5;
+		tf.setMatrix( m11, m12, m13, m21, m22, m23, m31, m32, m33 );
+	}
+	return valid;
+}
+
+
 double LayerData::_getZoom() const {
-    double zoom = DataSource::ZOOM_DEFAULT;
-    if ( m_dataSource ){
-        zoom = m_dataSource-> _getZoom();
-    }
+    double zoom = m_state.getValue<double>( Util::ZOOM );
     return zoom;
 }
 
@@ -471,6 +615,14 @@ void LayerData::_initializeState() {
     m_state.insertValue<bool>( layerColorKey, false );
     QString layerAlphaKey = Carta::State::UtilState::getLookup( MASK, LAYER_ALPHA );
     m_state.insertValue<bool>( layerAlphaKey, true );
+
+    //Pan and zoom
+    m_state.insertValue<double>( Util::ZOOM, DataSource::ZOOM_DEFAULT );
+    m_state.insertObject( PAN );
+    QString panXKey = Carta::State::UtilState::getLookup( PAN, Util::XCOORD );
+    QString panYKey = Carta::State::UtilState::getLookup( PAN, Util::YCOORD );
+    m_state.insertValue<double>( panXKey, 0 );
+    m_state.insertValue<double>( panYKey, 0 );
 }
 
 bool LayerData::_isContourDraw() const {
@@ -485,6 +637,22 @@ bool LayerData::_isContourDraw() const {
     return contourDraw;
 }
 
+bool LayerData::_isLoadable( const std::vector<int>& frames ) const {
+	bool loadable = false;
+	if ( m_dataSource ){
+		loadable = m_dataSource->_isLoadable( frames );
+	}
+	return loadable;
+}
+
+bool LayerData::_isSpectralAxis() const {
+	bool spectralAxis = false;
+	if ( m_dataSource ){
+		spectralAxis = m_dataSource->_isSpectralAxis();
+	}
+	return spectralAxis;
+}
+
 void LayerData::_load(std::vector<int> frames, bool recomputeClipsOnNewFrame,
         double minClipPercentile, double maxClipPercentile ){
     if ( m_dataSource ){
@@ -496,13 +664,12 @@ void LayerData::_load(std::vector<int> frames, bool recomputeClipsOnNewFrame,
                 gridService->setInputImage( m_dataSource->_getImage() );
             }
         }
+        if ( m_drawSync ){
+        	std::shared_ptr<Carta::Lib::NdArray::RawViewInterface> rawData( m_dataSource->_getRawData( frames ));
+        	m_drawSync->setInput( rawData );
+        }
     }
 }
-
-
-
-
-
 
 
 void LayerData::_removeContourSet( std::shared_ptr<DataContours> contourSet ){
@@ -520,53 +687,47 @@ void LayerData::_removeContourSet( std::shared_ptr<DataContours> contourSet ){
 
 
 void LayerData::_renderingDone(
-        QImage image,
-        Carta::Lib::VectorGraphics::VGList gridVG,
-        Carta::Lib::VectorGraphics::VGList contourVG,
-        int64_t /*jobId*/){
-    /// \todo we should make sure the jobId matches the last submitted job...
-    Carta::Lib::VectorGraphics::VGList vectorGraphics;
-    QImage qImage;
-    if ( !image.isNull()){
-        qImage = image;
-        Carta::Lib::VectorGraphics::VGComposer comp = Carta::Lib::VectorGraphics::VGComposer( );
-        if ( _isContourDraw()){
-            // where does 0.5, 0.5 map to?
-            if ( m_dataSource ){
+		QImage image,
+		Carta::Lib::VectorGraphics::VGList gridVG,
+		Carta::Lib::VectorGraphics::VGList contourVG,
+		Carta::Lib::VectorGraphics::VGList regionVG,
+		int64_t /*jobId*/){
+	/// \todo we should make sure the jobId matches the last submitted job...
 
-                bool valid1 = false;
-                QPointF p1 = m_dataSource->_getScreenPt( { 0.5, 0.5 }, &valid1 );
+	Carta::Lib::VectorGraphics::VGList vectorGraphics;
+	QImage qImage;
+	if ( !image.isNull()){
+		qImage = image;
+		Carta::Lib::VectorGraphics::VGComposer comp = Carta::Lib::VectorGraphics::VGComposer( );
 
-                // where does 1.5, 1.5 map to?
-                bool valid2 = false;
-                QPointF p2 = m_dataSource->_getScreenPt( { 1.5, 1.5 }, &valid2 );
-                if ( valid1 && valid2 ){
-                    QTransform tf;
-                    double m11 = p2.x() - p1.x();
-                    double m22 = p2.y() - p1.y();
-                    double m33 = 1; // no projection
-                    double m13 = 0; // no projection
-                    double m23 = 0; // no projection
-                    double m12 = 0; // no shearing
-                    double m21 = 0; // no shearing
-                    double m31 = p1.x() - m11 * 0.5;
-                    double m32 = p1.y() - m22 * 0.5;
-                    tf.setMatrix( m11, m12, m13, m21, m22, m23, m31, m32, m33 );
+		QPointF pan = _getPan();
+		double zoom = _getZoom();
+		QTransform tf;
+		bool valid =  _getTransform( pan, zoom, qImage.size(), tf );
+		if ( _isContourDraw() && valid ){
+			if ( m_dataSource ){
+				comp.append< Carta::Lib::VectorGraphics::Entries::Save >( );
+				comp.append< Carta::Lib::VectorGraphics::Entries::SetTransform >( tf );
+				comp.appendList( contourVG);
+				comp.append< Carta::Lib::VectorGraphics::Entries::Restore >( );
+			}
+		}
+		if ( regionVG.entries().size() > 0 && valid ){
+			comp.append< Carta::Lib::VectorGraphics::Entries::Save >( );
+			comp.append< Carta::Lib::VectorGraphics::Entries::SetTransform >( tf );
+			comp.appendList( regionVG);
+			comp.append< Carta::Lib::VectorGraphics::Entries::Restore >( );
+		}
+		comp.appendList( gridVG);
+		vectorGraphics = comp.vgList();
+	}
 
-                    comp.append< Carta::Lib::VectorGraphics::Entries::Save >( );
-                    comp.append< Carta::Lib::VectorGraphics::Entries::SetTransform >( tf );
-                    comp.appendList( contourVG);
-                    comp.append< Carta::Lib::VectorGraphics::Entries::Restore >( );
-                }
-            }
-        }
-        comp.appendList( gridVG);
-        vectorGraphics = comp.vgList();
-    }
-    std::shared_ptr<RenderResponse> response( new RenderResponse(qImage, vectorGraphics, _getLayerId()) );
-    emit renderingDone( response );
-
+	std::shared_ptr<RenderResponse> response( new RenderResponse(qImage, vectorGraphics, _getLayerId()) );
+	emit renderingDone( response );
 }
+
+
+
 
 void LayerData::_renderStart(){
 
@@ -575,6 +736,7 @@ void LayerData::_renderStart(){
     //Get the render parameters from the next request.
     std::shared_ptr<RenderRequest> request = m_renderRequests.pop();
     std::vector<int> frames = request->getFrames();
+
     Carta::Lib::KnownSkyCS cs = request->getCoordinateSystem();
     bool topOfStack = request->isStackTop();
     QSize outputSize = request->getOutputSize();
@@ -582,33 +744,38 @@ void LayerData::_renderStart(){
     std::shared_ptr<Carta::Lib::IWcsGridRenderService> gridService = m_dataGrid->_getRenderer();
     std::shared_ptr<Carta::Core::ImageRenderService::Service> imageService = m_dataSource->_getRenderer();
 
-    QSize renderSize = m_viewSize;
-    if ( !outputSize.isNull() && !outputSize.isEmpty() &&
-            outputSize.width() > 0 && outputSize.height() > 0  ){
-        renderSize = outputSize;
+    m_dataSource->_viewResize( outputSize );
+
+    //Use the zoom and pan from the render request, if they have been set;
+    //otherwise, use the ones from our state.
+    double zoom = 0;
+    if ( request->isZoomSet() ){
+        zoom = request->getZoom();
     }
+    else {
+        zoom = _getZoom();
+    }
+    m_dataSource->_setZoom( zoom );
 
-    m_dataSource->_viewResize( renderSize );
-    gridService-> setOutputSize( renderSize );
+    QPointF center;
+    if ( request->isPanSet() ){
+        center = request->getPan();
+    }
+    else {
+        center = _getCenterPixel();
+    }
+    m_dataSource->_setPan( center.x(), center.y());
 
-    int leftMargin = m_dataGrid->_getMargin( LabelFormats::EAST );
-    int rightMargin = m_dataGrid->_getMargin( LabelFormats::WEST );
-    int topMargin = m_dataGrid->_getMargin( LabelFormats::NORTH );
-    int bottomMargin = m_dataGrid->_getMargin( LabelFormats::SOUTH );
-    int outWidth = renderSize.width() - leftMargin - rightMargin;
-    int outHeight = renderSize.height() - topMargin - bottomMargin;
-    QRectF outputRect( leftMargin, topMargin, outWidth, outHeight );
-
-    QPointF topLeft = outputRect.topLeft();
-    QPointF bottomRight = outputRect.bottomRight();
-
-    QPointF topLeftInput = imageService-> screen2img( topLeft );
-    QPointF bottomRightInput = imageService->screen2img( bottomRight );
-    QRectF inputRect( topLeftInput, bottomRightInput );
+    gridService-> setOutputSize( outputSize );
+    QRectF outputRect = _getOutputRectangle( outputSize, request->isRequestMain(),
+            request->isRequestContext() );
+    QRectF inputRect = _getInputRectangle( center, zoom, outputRect, outputSize );
 
     gridService-> setImageRect( inputRect );
     gridService-> setOutputRect( outputRect );
 
+
+    _load( frames, request->isRecomputeClips(), request->getClipPercentMin(), request->getClipPercentMax());
     std::vector<AxisDisplayInfo> axisInfo = m_dataSource->_getAxisDisplayInfo();
     int axisCount = axisInfo.size();
     for ( int i = 0; i < axisCount; i++ ){
@@ -622,9 +789,10 @@ void LayerData::_renderStart(){
     }
     gridService->setAxisDisplayInfo( axisInfo );
 
-    std::shared_ptr<Carta::Lib::NdArray::RawViewInterface> rawData( m_dataSource->_getRawData( frames ));
-    m_drawSync->setInput( rawData );
-    m_drawSync->setContours( m_dataContours );
+    //Only draw contours and grid for main image.
+    if ( request->isRequestMain() ){
+        m_drawSync->setContours( m_dataContours );
+    }
 
     //Which display axes will be drawn.
     AxisInfo::KnownType xType = m_dataSource->_getAxisXType();
@@ -641,15 +809,20 @@ void LayerData::_renderStart(){
     Carta::Lib::AxisLabelInfo vertAxisInfo = m_dataGrid->_getAxisLabelInfo( 1, vertAxisType, cs );
     gridService->setAxisLabelInfo( 1, vertAxisInfo );
 
-    bool contourDraw = _isContourDraw();
+    bool contourDraw = _isContourDraw() && request->isRequestMain();
     bool gridDraw = false;
-    if ( topOfStack ){
+    if ( topOfStack && request->isRequestMain() ){
+    	m_drawSync->setRegionGraphics( m_regionGraphics );
         gridDraw = m_dataGrid->_isGridVisible();
+    }
+    else {
+    	//Empty list
+    	Carta::Lib::VectorGraphics::VGList vgList;
+    	m_drawSync->setRegionGraphics( vgList );
     }
 
     m_drawSync-> start( contourDraw, gridDraw );
 }
-
 
 
 void LayerData::_resetStateContours(const Carta::State::StateInterface& restoreState ){
@@ -668,8 +841,8 @@ void LayerData::_resetStateContours(const Carta::State::StateInterface& restoreS
        std::shared_ptr<DataContours> contourSet = _getContour( contourName );
        if ( !contourSet ){
            newContourSet = true;
-          contourSet = std::shared_ptr<DataContours>(objMan->createObject<DataContours>());
-          m_dataContours.insert( contourSet );
+           contourSet = std::shared_ptr<DataContours>(objMan->createObject<DataContours>());
+           m_dataContours.insert( contourSet );
        }
 
        QString contourSetState = restoreState.toString( lookup );
@@ -680,7 +853,7 @@ void LayerData::_resetStateContours(const Carta::State::StateInterface& restoreS
    }
 
    //Remove any contours no longer there
-    for ( std::set<std::shared_ptr<DataContours> >::iterator it = m_dataContours.begin();
+   for ( std::set<std::shared_ptr<DataContours> >::iterator it = m_dataContours.begin();
             it != m_dataContours.end(); it++ ){
         QString contourSetName = (*it)->getName();
         if ( !supportedContours.contains( contourSetName )){
@@ -727,35 +900,41 @@ void LayerData::_resetState( const Carta::State::StateInterface& restoreState ){
     m_state.setValue<bool>( layerColorKey, restoreState.getValue<bool>(layerColorKey) );
     QString layerAlphaKey = Carta::State::UtilState::getLookup( MASK, LAYER_ALPHA );
     m_state.setValue<bool>( layerAlphaKey, restoreState.getValue<bool>(layerAlphaKey) );
+
+    m_state.setValue<double>( Util::ZOOM, restoreState.getValue<double>( Util::ZOOM ));
+    QString panXKey = Carta::State::UtilState::getLookup( PAN, Util::XCOORD );
+    QString panYKey = Carta::State::UtilState::getLookup( PAN, Util::YCOORD );
+    m_state.setValue<double>( panXKey, restoreState.getValue<double>( panXKey ));
+    m_state.setValue<double>( panYKey, restoreState.getValue<double>( panYKey ));
 }
 
 
 void LayerData::_resetZoom( ){
-    if ( m_dataSource ){
-        m_dataSource->_resetZoom();
-    }
+    _setZoom( DataSource::ZOOM_DEFAULT );
 }
 
 
 void LayerData::_resetPan( ){
-    if ( m_dataSource ){
-        m_dataSource->_resetPan();
-    }
+    QPointF panValue = m_dataSource->_getCenter();
+    _setPan( panValue.x(), panValue.y() );
 }
 
 
 QString LayerData::_setFileName( const QString& fileName, bool * success ){
     QString result = m_dataSource->_setFileName( fileName, success );
     if ( *success){
-        DataLoader* dLoader = Util::findSingletonObject<DataLoader>();
-        QString shortName = dLoader->getShortName( fileName );
-        //m_state.setValue<QString>(DataSource::DATA_PATH, fileName );
+
+        //Reset the pan and zoom when the image is loaded.
+        _resetPan();
+        _resetZoom();
 
         //Default is to have the layer name match the file name, unless
         //the user has explicitly set it.
-        QString layerName = m_state.getValue<QString>( LAYER_NAME );
+        DataLoader* dLoader = Util::findSingletonObject<DataLoader>();
+        QString shortName = dLoader->getShortName( fileName );
+        QString layerName = m_state.getValue<QString>( Util::NAME );
         if ( layerName.isEmpty() || layerName.length() == 0 ){
-            m_state.setValue<QString>( LAYER_NAME, shortName );
+            m_state.setValue<QString>( Util::NAME, shortName );
             m_state.flushState();
         }
         result = m_state.getValue<QString>( Util::ID );
@@ -763,7 +942,7 @@ QString LayerData::_setFileName( const QString& fileName, bool * success ){
     return result;
 }
 
-bool LayerData::_setLayersGrouped( bool /*grouped*/  ){
+bool LayerData::_setLayersGrouped( bool /*grouped*/, const QSize& /*viewSize*/  ){
     return false;
 }
 
@@ -807,16 +986,21 @@ bool LayerData::_setMaskAlpha( const QString& id, int alphaAmount ){
     return changed;
 }
 
+
 void LayerData::_setMaskAlphaDefault(){
     _setMaskAlpha( _getLayerId(), 255);
 }
 
 
-
 void LayerData::_setPan( double imgX, double imgY ){
-    if ( m_dataSource ){
-        m_dataSource-> _setPan( imgX, imgY );
-    }
+    QString panKeyX = Carta::State::UtilState::getLookup( PAN, Util::XCOORD );
+    QString panKeyY = Carta::State::UtilState::getLookup( PAN, Util::YCOORD );
+    m_state.setValue<double>( panKeyX, imgX );
+    m_state.setValue<double>( panKeyY, imgY );
+}
+
+void LayerData::_setRegionGraphics( const Carta::Lib::VectorGraphics::VGList& regionVGList ){
+	m_regionGraphics = regionVGList;
 }
 
 void LayerData::_setSupportAlpha( bool supportAlpha ){
@@ -837,8 +1021,9 @@ void LayerData::_setSupportColor( bool supportColor ){
 
 
 void LayerData::_setZoom( double zoomAmount){
-    if ( m_dataSource ){
-        m_dataSource-> _setZoom( zoomAmount );
+    double oldZoom = m_state.getValue<double>( Util::ZOOM );
+    if ( oldZoom != zoomAmount ){
+        m_state.setValue<double>( Util::ZOOM, zoomAmount );
     }
 }
 
@@ -888,19 +1073,6 @@ void LayerData::_updateColor(){
         Layer::_updateColor();
     }
 }
-
-void LayerData::_viewResize( const QSize& newSize ){
-    m_viewSize = newSize;
-    if ( m_dataSource ){
-        m_dataSource->_viewResize( newSize );
-    }
-}
-
-void LayerData::_viewReset(){
-    _viewResize( m_viewSize );
-    _setPan( m_viewPan.x(), m_viewPan.y() );
-}
-
 
 
 LayerData::~LayerData() {

@@ -1337,7 +1337,7 @@ class Image(CartaView):
                                      imageView=self.getId(), value=value)
         return result
 
-    def  setContourLevels(self, contourName, levels):
+    def setContourLevels(self, contourName, levels):
         """
         Update the contour levels within the given contour set.
 
@@ -1393,7 +1393,7 @@ class Image(CartaView):
         list
             Error message if an error occurred; nothing otherwise.
         """
-        result = self.con.cmdTagList("setStackSelectAuto", imageView=self.getId(), stackSelectFlag)
+        result = self.con.cmdTagList("setStackSelectAuto", imageView=self.getId(), stackSelectFlag=stackSelectFlag)
         return result
 
     def setPanZoomAll(self, setPanZoomAllFlag = 'true'):
@@ -1406,7 +1406,7 @@ class Image(CartaView):
         list
             Error message if an error occurred; nothing otherwise.
         """
-        result = self.con.cmdTagList("setPanZoomAll", imageView=self.getId(), setPanZoomAllFlag)
+        result = self.con.cmdTagList("setPanZoomAll", imageView=self.getId(), setPanZoomAllFlag=setPanZoomAllFlag)
         return result
 
     def setMaskAlpha(self, imageName, alphaAmount = 0):
@@ -1419,7 +1419,7 @@ class Image(CartaView):
         list
             Error message if an error occurred; nothing otherwise.
         """
-        result = self.con.cmdTagList("setMaskAlpha", imageView=self.getId(), imageName, alphaAmount)
+        result = self.con.cmdTagList("setMaskAlpha", imageView=self.getId(), imageName=imageName, alphaAmount=alphaAmount)
         return result
 
     def setMaskColor(self, imageName, redAmount = 0, greenAmount = 0, blueAmount = 0):
@@ -1434,7 +1434,7 @@ class Image(CartaView):
         list
             Error message if an error occurred; nothing otherwise.
         """
-        result = self.con.cmdTagList("setMaskAlpha", imageView=self.getId(), imageName, redAmount, greenAmount, blueAmount)
+        result = self.con.cmdTagList("setMaskAlpha", imageView=self.getId(), imageName=imageName, redAmount=redAmount, greenAmount=greenAmount, blueAmount=blueAmount)
         return result
 
     def setCompositionMode(self, imageName ):
@@ -1446,7 +1446,8 @@ class Image(CartaView):
         list
             Error message if an error occurred; nothing otherwise.
         """
-        result = self.con.cmdTagList("setCompositionMode", imageView=self.getId(), imageName)
+
+        result = self.con.cmdTagList("setCompositionMode", imageView=self.getId(), imageName=imageName)
         return result
 
     def isEmpty(self):
