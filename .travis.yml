@@ -1,6 +1,6 @@
 branches:
  only:
-   - develop/improveDockerAndCI
+   - improveDockerAndCI
 
 sudo: required
 
