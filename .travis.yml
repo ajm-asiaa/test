@@ -1,11 +1,8 @@
 branches:
  only:
-   - develop
+   - develop/improveDockerAndCI
 
 sudo: required
-
-addons:
-  ssh_known_hosts: http://cartaserver.ddns.net/
 
 language: generic
 
