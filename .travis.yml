@@ -24,6 +24,7 @@ install:
     - docker info
     - mkdir -p ~/docker
     - mkdir -p ~/images
+    - firefox --version
 
     # Restore docker build image and configure Dockerfile
     - if [[ -e ~/docker/image.tar ]]; then docker load -i ~/docker/image.tar; else  docker pull docker.io/carta/cartabuild:base_20170105; docker save docker.io/carta/cartabuild:base_20170105 > ~/docker/image.tar; fi
